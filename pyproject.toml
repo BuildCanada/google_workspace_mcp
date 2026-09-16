@@ -71,6 +71,9 @@ gcs = [
 disk = [
     "py-key-value-aio[filetree]>=0.3.0",
 ]
+s3 = [
+    "py-key-value-aio[s3]>=0.3.0",
+]
 valkey = [
     "py-key-value-aio[valkey]>=0.3.0",
 ]
@@ -107,6 +110,9 @@ dev = [
 [dependency-groups]
 disk = [
     "py-key-value-aio[filetree]>=0.3.0",
+]
+s3 = [
+    "py-key-value-aio[s3]>=0.3.0",
 ]
 valkey = [
     "py-key-value-aio[valkey]>=0.3.0",

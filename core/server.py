@@ -493,11 +493,96 @@ def configure_server_for_http():
             )
             valkey_host = os.getenv("WORKSPACE_MCP_OAUTH_PROXY_VALKEY_HOST", "").strip()
 
-            # Determine storage backend: valkey, disk, memory (default)
+            # Determine storage backend: valkey, s3, disk, memory (default)
             use_valkey = storage_backend == "valkey" or bool(valkey_host)
+            use_s3 = storage_backend == "s3"
             use_disk = storage_backend == "disk"
 
-            if use_valkey:
+            if use_s3:
+                # S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, ...)
+                # through the S3 API. Every proxy record (DCR clients, upstream
+                # token sets, JTI mappings, refresh-token metadata, transactions,
+                # codes) is one small object, so state survives container
+                # restarts without a filesystem or a Redis. Encrypted at rest
+                # with the same Fernet wrapper the other backends use.
+                try:
+                    from key_value.aio.stores.s3 import S3Store
+
+                    s3_bucket = os.getenv(
+                        "WORKSPACE_MCP_OAUTH_PROXY_S3_BUCKET", ""
+                    ).strip()
+                    if not s3_bucket:
+                        raise ValueError(
+                            "WORKSPACE_MCP_OAUTH_PROXY_S3_BUCKET is required when "
+                            "WORKSPACE_MCP_OAUTH_PROXY_STORAGE_BACKEND=s3"
+                        )
+                    s3_endpoint_url = (
+                        os.getenv("WORKSPACE_MCP_OAUTH_PROXY_S3_ENDPOINT_URL", "")
+                        .strip()
+                        or None
+                    )
+                    s3_region = (
+                        os.getenv("WORKSPACE_MCP_OAUTH_PROXY_S3_REGION", "").strip()
+                        or None
+                    )
+                    # Explicit keys win; otherwise boto's default credential chain
+                    # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, profiles, IAM).
+                    s3_access_key_id = (
+                        os.getenv(
+                            "WORKSPACE_MCP_OAUTH_PROXY_S3_ACCESS_KEY_ID", ""
+                        ).strip()
+                        or None
+                    )
+                    s3_secret_access_key = (
+                        os.getenv(
+                            "WORKSPACE_MCP_OAUTH_PROXY_S3_SECRET_ACCESS_KEY", ""
+                        ).strip()
+                        or None
+                    )
+
+                    client_storage = S3Store(
+                        bucket_name=s3_bucket,
+                        endpoint_url=s3_endpoint_url,
+                        region_name=s3_region,
+                        aws_access_key_id=s3_access_key_id,
+                        aws_secret_access_key=s3_secret_access_key,
+                    )
+
+                    jwt_signing_key = validate_and_derive_jwt_key(
+                        jwt_signing_key_override, config.client_secret
+                    )
+
+                    storage_encryption_key = derive_jwt_key(
+                        high_entropy_material=jwt_signing_key.decode(),
+                        salt="fastmcp-storage-encryption-key",
+                    )
+
+                    client_storage = FernetEncryptionWrapper(
+                        key_value=client_storage,
+                        fernet=Fernet(key=storage_encryption_key),
+                    )
+                    logger.info(
+                        "OAuth 2.1: Using S3Store for FastMCP OAuth proxy client_storage (bucket=%s, endpoint=%s, region=%s)",
+                        s3_bucket,
+                        s3_endpoint_url or "default",
+                        s3_region or "default",
+                    )
+                    logger.info(
+                        "OAuth 2.1: Applied Fernet encryption wrapper to S3 client_storage (key derived from FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY or GOOGLE_OAUTH_CLIENT_SECRET)."
+                    )
+                except ImportError as exc:
+                    logger.warning(
+                        "OAuth 2.1: S3 client_storage requested but S3 dependencies are not installed (%s). "
+                        "Install 'workspace-mcp[s3]' (or 'py-key-value-aio[s3]', which includes 'aioboto3') "
+                        "or unset WORKSPACE_MCP_OAUTH_PROXY_STORAGE_BACKEND.",
+                        exc,
+                    )
+                except ValueError as exc:
+                    logger.warning(
+                        "OAuth 2.1: Invalid S3 configuration; falling back to default storage (%s).",
+                        exc,
+                    )
+            elif use_valkey:
                 try:
                     from key_value.aio.stores.valkey import ValkeyStore
 

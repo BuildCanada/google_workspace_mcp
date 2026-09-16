@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "workspace-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "observability": { "enabled": true },
+  // Build Canada deployment: served only from the custom hostname, which sits
+  // behind Cloudflare Access. workers.dev and preview URLs stay off.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "workspace-mcp.svc.buildcanada.com", "custom_domain": true }],
+  // The upstream Dockerfile two directories up is the image. One instance is
+  // enough for a team; OAuth proxy state lives in R2 (see WorkspaceMcp
+  // envVars), so the container is free to sleep and wake without losing it.
+  "containers": [
+    {
+      "class_name": "WorkspaceMcp",
+      "image": "../../Dockerfile",
+      "max_instances": 1,
+      "instance_type": "basic"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "WORKSPACE_MCP", "class_name": "WorkspaceMcp" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceMcp"] }],
+  // Non-secret container settings. Secrets (GOOGLE_OAUTH_CLIENT_ID,
+  // GOOGLE_OAUTH_CLIENT_SECRET, R2 access key pair) are Worker secrets set
+  // with `wrangler secret put` and passed through in src/index.ts.
+  "vars": {
+    "PUBLIC_URL": "https://workspace-mcp.svc.buildcanada.com",
+    "TOOL_TIER": "core",
+    "R2_BUCKET": "workspace-mcp-oauth-state",
+    "R2_ENDPOINT_URL": "https://af43b5869a980d4edc6c18f15cd7aa2d.r2.cloudflarestorage.com"
+  }
+}

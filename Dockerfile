@@ -15,7 +15,7 @@ COPY . .
 # Install Python dependencies using uv sync
 # --extra otel ships the OpenTelemetry SDK/exporter so tracing can be enabled at
 # runtime via OTEL_* env vars; it stays a no-op unless an OTLP endpoint is set.
-RUN uv sync --frozen --no-dev --extra disk --extra otel
+RUN uv sync --frozen --no-dev --extra disk --extra s3 --extra otel
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \
