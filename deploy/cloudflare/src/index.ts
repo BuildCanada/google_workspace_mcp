@@ -53,6 +53,17 @@ export class WorkspaceMcp extends Container<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const container = getContainer(env.WORKSPACE_MCP, "default");
+    const url = new URL(request.url);
+    // Operational hook: a running container keeps the environment it started
+    // with, so new Worker secrets (a rotated Google client secret, new R2
+    // keys) only take effect after a restart. This path sits behind the team
+    // Cloudflare Access app, not the machine-endpoint bypass, so only a
+    // signed-in team member can reach it. The next request starts a fresh
+    // container with the current secrets.
+    if (url.pathname === "/__admin/restart" && request.method === "POST") {
+      await container.destroy();
+      return new Response("container stopped; next request starts it with current secrets\n");
+    }
     return container.fetch(request);
   },
 } satisfies ExportedHandler<Env>;

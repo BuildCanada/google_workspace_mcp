@@ -34,6 +34,20 @@ npx wrangler deploy          # builds ../../Dockerfile with local Docker, pushes
 
 Requires Docker running locally and the Workers Paid plan on the account.
 
+The image build context is the repo root (`COPY . .` in the Dockerfile), so any
+change in the repo produces a new image and `wrangler deploy` rolls the
+container. A deploy with no source change keeps the running instance, and a
+running instance keeps the environment it started with. After changing a
+secret, restart it explicitly (team Access session required):
+
+```sh
+curl -X POST -H "cf-access-token: $(cloudflared access token -app=https://workspace-mcp.svc.buildcanada.com)" \
+  https://workspace-mcp.svc.buildcanada.com/__admin/restart
+```
+
+The next request starts a fresh container with the current secrets. Nobody
+re-consents: OAuth state is in R2, not in the container.
+
 Secrets, set once with `npx wrangler secret put <NAME>`:
 
 | Secret                       | Where it comes from                                              |
